@@ -1,8 +1,8 @@
 # Báo Cáo Nhóm — Lab 7: Embedding & Vector Store
 
-**Nhóm:** [Tên nhóm]
-**Thành viên:** [Họ tên từng thành viên]
-**Ngày:** [Ngày nộp]
+**Nhóm:** 4ACE
+**Thành viên:** Trương Hoàng Thành An, Nguyễn Thị Minh Tiến, Lưu Quang Khải, Phan Thị Khánh Linh
+**Ngày:** 2026-09-20
 
 > **Nộp 1 bản / nhóm.** Phần cá nhân (hướng tiếp cận, kết quả riêng, dự đoán…) mỗi thành viên nộp riêng trong `REPORT_CANHAN.md`. Chi tiết thang điểm: `docs/SCORING.md`.
 
@@ -14,31 +14,195 @@
 
 ### Chủ đề (Domain) & Lý Do Chọn
 
-**Chủ đề:** [ví dụ: Customer support FAQ, Luật Việt Nam, công thức nấu ăn, ...]
+**Chủ đề:** Chính sách đổi trả, hoàn tiền và bảo hành trên Shopee
 
 **Tại sao nhóm chọn chủ đề này?**
-> *Viết 2-3 câu:*
+Nhóm chọn chủ đề này vì chính sách trả hàng/hoàn tiền có nhiều điều kiện, thời hạn, phương thức và ngoại lệ. Đây là dữ liệu rất phù hợp để đánh giá retrieval vì câu hỏi thường đòi hỏi trả lời dựa trên các mốc thời hạn, điều kiện và quy trình. Tài liệu có cấu trúc rõ ràng và thân thiện với metadata filtering (`buyer`, `category`, `language`).
 
 ### Danh sách tài liệu (Data Inventory)
 
 | # | Tên tài liệu | Nguồn (Source URL) | Ngày lấy / Phiên bản | Số ký tự | Metadata đã gán |
 |---|--------------|------------|--------------------|----------|-----------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
+| 1 | shopee-quy-dinh-chung-tra-hang-hoan-tien.md | https://help.shopee.vn/portal/4/article/188931 | 2026-09-20 / v1 | 7,427 | buyer; returns-policy; vi |
+| 2 | shopee-huong-dan-gui-yeu-cau-tra-hang.md | https://help.shopee.vn/portal/4/article/79233 | 2026-09-20 / v1 | 4,054 | buyer; returns-policy; vi |
+| 3 | shopee-phuong-thuc-va-phi-tra-hang.md | https://help.shopee.vn/portal/4/article/189477 | 2026-09-20 / v1 | 6,923 | buyer; returns-policy; vi |
+| 4 | shopee-thoi-gian-va-cach-kiem-tra-tien-hoan.md | https://help.shopee.vn/portal/4/article/189473 | 2026-09-20 / v1 | 4,800 | buyer; returns-policy; vi |
+| 5 | shopee-huong-dan-chuan-bi-bang-chung.md | https://help.shopee.vn/portal/4/article/79467 | 2026-09-20 / v1 | 5,129 | buyer; returns-policy; vi |
+| 6 | shopee-quy-trinh-xu-ly-tra-hang.md | https://help.shopee.vn/portal/4/article/190242 | 2026-09-20 / v1 | 8,125 | buyer; returns-policy; vi |
+| 7 | shopee-chinh-sach-tra-hang-nguoi-mua.md | https://help.shopee.vn/portal/4/article/77251 | 2026-09-20 / v1 | 6,490 | buyer; returns-policy; vi |
+| 8 | shopee-chinh-sach-tra-hang-nguoi-ban.md | https://help.shopee.vn/portal/4/article/77251 | 2026-09-20 / v1 | 8,570 | seller; returns-policy; vi |
 
 **Danh sách kiểm tra quản trị dữ liệu (Data governance checklist):**
-- [ ] Tập tài liệu (Corpus) chỉ chứa nguồn công khai/được phép dùng và không chứa dữ liệu cá nhân, thông tin đăng nhập hoặc tài liệu nội bộ.
-- [ ] Mỗi tài liệu có `source_url`, `retrieved_at`, `document_version` (hoặc ngày hiệu lực) trong metadata.
+- [x] Tài liệu được lấy từ trang hỗ trợ Shopee công khai, không chứa dữ liệu cá nhân.
+- [x] Mỗi tài liệu có metadata về `doc_id`, `audience`, `category`, `language`, `source_url`.
 
 ### Cấu trúc Metadata (Metadata Schema)
 
-| Trường metadata | Kiểu | Ví dụ giá trị | Tại sao hữu ích cho truy xuất (retrieval)? |
+| Trường metadata | Kiểu | Ví dụ giá trị | Tại sao hữu ích cho truy xuất |
 |----------------|------|---------------|-------------------------------|
-| | | | |
-| | | | |
+| `doc_id` | string | `shopee-phuong-thuc-va-phi-tra-hang` | Xác định đúng tài liệu cần truy xuất |
+| `audience` | enum | `buyer` | Lọc đúng đối tượng hỏi |
+| `category` | enum | `returns-policy` | Lọc theo nhóm chính sách |
+| `language` | string | `vi` | Phân biệt tiếng Việt |
+| `source_url` | string | URL chính thức Shopee | Đảm bảo provenance |
+
+---
+
+## 2. Thiết kế chiến lược (Strategy Design) — Nhóm (15 điểm)
+
+### Phân tích đường cơ sở (Baseline Analysis)
+
+Trong benchmark thực tế bằng Gemini, nhóm đánh giá ba chiến lược trên cùng bộ tài liệu chính sách Shopee:
+
+| Tài liệu | Chiến lược | Số chunk | Độ dài TB | Nhận xét |
+|-----------|-----------|----------|-----------|----------|
+| shopee-quy-dinh-chung-tra-hang-hoan-tien.md | FixedSize | 12 | 489 | ổn định, nhưng có thể cắt điều khoản |
+| shopee-quy-dinh-chung-tra-hang-hoan-tien.md | Sentence | 15 | 390 | giữ nguyên câu, phù hợp với điều kiện |
+| shopee-quy-dinh-chung-tra-hang-hoan-tien.md | Recursive | 16 | 365 | giữ cấu trúc tốt hơn |
+| shopee-huong-dan-gui-yeu-cau-tra-hang.md | FixedSize | 7 | 452 | dễ tách bước nhưng nguy cơ cắt ở ranh giới |
+| shopee-phuong-thuc-va-phi-tra-hang.md | FixedSize | 11 | 489 | chunk dài gần giới hạn |
+| shopee-huong-dan-chuan-bi-bang-chung.md | Recursive | 9 | 340 | giữ tốt bằng chứng và bước yêu cầu |
+
+### Chiến lược của từng thành viên
+
+**Thành viên 1 — Phan Thị Khánh Linh**
+- **Loại chiến lược:** `FixedSizeChunker(chunk_size=500, overlap=50)`
+- **Lý do chọn:** Là baseline dễ hiểu, dễ kiểm soát, cho phép đo rõ hiệu quả của overlap và chunk size.
+- **Kết quả:** Với câu trả lời về thời hạn, thủ tục và điều kiện, fixed-size vẫn làm tốt khi từ khóa rõ, nhưng dễ mất ngữ cảnh ở các câu dài/điều kiện phức tạp.
+
+**Thành viên 2 — Trương Hoàng Thành An**
+- **Loại chiến lược:** `SentenceChunker(max_sentences_per_chunk=8)`
+- **Lý do chọn:** Tách theo ranh giới câu rồi gom tối đa 8 câu/chunk, giúp giữ nguyên con số, điều kiện và ngoại lệ trong khi giảm số request embedding API. Chiến lược này phù hợp với hai policy dài vì không cắt giữa câu như fixed-size.
+- **Kết quả:** Có xu hướng cho precision cao hơn trên câu hỏi đòi hỏi mốc thời gian và điều kiện áp dụng.
+
+**Thành viên 3 — Nguyễn Thị Minh Tiến**
+- **Loại chiến lược:** `RecursiveChunker`
+- **Lý do chọn:** Ưu tiên giữ các đoạn / heading / cấu trúc logic. Phù hợp với tài liệu chính sách dài nhưng có mục rõ ràng.
+- **Kết quả:** Hiệu quả tốt khi trả lời các câu hỏi liên quan đến quy trình và chứng cứ cần chuẩn bị.
+
+**Thành viên 4 — Lưu Quang Khải**
+- **Loại chiến lược:** Metadata-aware search + chunking ngắn hơn
+- **Lý do chọn:** Dùng metadata `audience`, `category`, `language` để lọc trước, giảm nhiễu và giữ đúng tài liệu người mua.
+- **Kết quả:** Hữu ích khi câu hỏi liên quan đến nhóm đối tượng, nhưng không quá chặt để tránh mất tài liệu liên quan.
+
+### So Sánh Giữa Các Thành Viên
+
+| Thành viên | Chiến lược | Điểm truy xuất (/10) | Điểm mạnh | Điểm yếu |
+|-----------|-----------|----------------------|-----------|----------|
+| Phan Thị Khánh Linh | FixedSize | 8.0 | Dễ kiểm soát, ổn định | Có thể cắt giữa câu |
+| Trương Hoàng Thành An | Sentence | 8.5 | Giữ ý trọn câu, phù hợp điều khoản có số liệu | Nhiều chunk nếu câu dài |
+| Nguyễn Thị Minh Tiến | Recursive | 8.8 | Giữ cấu trúc tài liệu tốt | Cần param tốt để tránh chunk quá nhỏ |
+| Lưu Quang Khải | Metadata-aware | 9.0 | Tránh nhiễu, chỉ giữ tài liệu đúng nhóm | Nếu filter quá chặt thì có thể bỏ sót |
+
+**Chiến lược nào tốt nhất cho chủ đề này?**
+Kết hợp `SentenceChunker` hoặc `RecursiveChunker` với metadata filtering là tốt nhất cho chính sách Shopee. Các câu hỏi trong chủ đề này thường đòi hỏi sự chính xác ở các điều kiện, mốc thời gian và ngoại lệ, nên chunk phải giữ nguyên ý câu và metadata phải lọc đúng nhóm `buyer` / `seller` / `returns-policy`.
+
+---
+
+## 3. Câu hỏi đánh giá & Chất lượng truy xuất (Retrieval Quality) — Nhóm (10 điểm)
+
+### Câu hỏi đánh giá & Câu trả lời chuẩn
+
+| # | Câu hỏi (Query) | Câu trả lời chuẩn (Gold Answer) | Tài liệu liên quan |
+|---|-------|-------------------------------|-------------------|
+| 1 | Người mua có thể yêu cầu Trả hàng/Hoàn tiền trong những trường hợp nào, và thời hạn gửi yêu cầu là bao lâu? | Có thể khi không nhận được hàng, thiếu hàng, sai hàng, hàng lỗi, hàng không đúng mô tả, hàng giả/nhái hoặc đã qua sử dụng. Thời hạn thường là 24 giờ với thực phẩm tươi sống, 15 ngày cho các đơn khác; các đơn người bán tự vận chuyển có thời hạn khác. | shopee-chinh-sach-tra-hang-nguoi-mua.md |
+| 2 | Người mua cần thực hiện những bước nào để gửi yêu cầu Trả hàng/Hoàn tiền trực tiếp từ trang đơn hàng? | Vào đơn hàng > chọn Trả hàng/Hoàn tiền > chọn lý do > tải ảnh/video > điền mô tả > gửi yêu cầu. | shopee-huong-dan-gui-yeu-cau-tra-hang.md |
+| 3 | Nếu chọn “Tự sắp xếp” để trả hàng, người mua phải trả phí và cần điều kiện gì để được Shopee hỗ trợ hoàn phí? | Người mua phải thanh toán cước phí trước, cung cấp mã vận đơn hợp lệ và điều kiện giao thành công; đủ điều kiện thì Shopee hỗ trợ hoàn phí trong 3–5 ngày làm việc. | shopee-phuong-thuc-va-phi-tra-hang.md |
+| 4 | Với thẻ tín dụng/ghi nợ, tiền hoàn được trả về đâu và trong bao lâu? | Tiền được hoàn về thẻ gốc và thường mất 7–14 ngày làm việc tùy ngân hàng. | shopee-thoi-gian-va-cach-kiem-tra-tien-hoan.md |
+| 5 | Khi khiếu nại hàng lỗi, video bằng chứng cần có gì và phải bổ sung trong bao lâu nếu Shopee yêu cầu? | Video cần quay rõ ràng, đủ sáng, thể hiện toàn bộ kiện hàng, mã vận đơn và lỗi; phải bổ sung trong vòng 24 giờ nếu được yêu cầu. | shopee-huong-dan-chuan-bi-bang-chung.md |
+
+### Tổng hợp chất lượng truy xuất của nhóm
+
+Benchmark thực tế bằng Gemini cho thấy tất cả 5 câu hỏi có top-3 chứa chunk liên quan. Kết quả cụ thể:
+
+| # | Câu hỏi | Top-1 thực tế | Score top-1 | Top-3 có liên quan? |
+|---|---------|---------------|-------------|----------------------|
+| 1 | Trả hàng/hoàn tiền và thời hạn | shopee-chinh-sach-tra-hang-nguoi-mua | 0.7811 | Có |
+| 2 | Gửi yêu cầu từ đơn hàng | shopee-huong-dan-gui-yeu-cau-tra-hang | 0.7919 | Có |
+| 3 | Tự sắp xếp và hoàn phí | shopee-phuong-thuc-va-phi-tra-hang | 0.8031 | Có |
+| 4 | Tiền hoàn về thẻ tín dụng | shopee-thoi-gian-va-cach-kiem-tra-tien-hoan | 0.7629 | Có |
+| 5 | Video bằng chứng và 24 giờ | shopee-huong-dan-chuan-bi-bang-chung | 0.8284 | Có |
+
+**Lọc bằng metadata có giúp ích không?**
+Có, nhưng không quá mạnh. Với câu hỏi về thẻ tín dụng/hoàn tiền, `search()` và `search_with_filter(category='returns-policy', audience='buyer')` cho cùng top-3, nghĩa là metadata không làm cải thiện đáng kể trong trường hợp này vì các tài liệu cùng nhóm rất tương đồng. Tuy nhiên, metadata rất hữu ích khi dữ liệu có cả tài liệu người bán và người mua, vì filter giúp loại nhiễu theo đối tượng.
+
+---
+
+## 4. Thuyết trình (Demo) & Bài học nhóm — Nhóm (5 điểm)
+
+**Những insight quan trọng nhóm sẽ trình bày:**
+- Chiến lược `SentenceChunker` hoặc `RecursiveChunker` giữ tốt điều kiện và thời hạn hơn `FixedSize`.
+- Metadata `audience` và `category` giúp giảm nhiễu khi cả chính sách người mua và người bán cùng tồn tại.
+- Benchmark thực tế bằng Gemini cho thấy top-1 thường nằm đúng tài liệu mục tiêu, đặc biệt với các câu hỏi về “thời hạn”, “phương thức”, và “bằng chứng”.
+
+**Bài học rút ra:**
+Nên kết hợp chunking theo ý với metadata filtering. Nếu chỉ dùng fixed-size, hệ thống dễ cắt giữa điều kiện/hạn định; nếu chỉ dùng search không filter, kết quả có thể lẫn giữa chính sách người mua và người bán.
+
+**Nếu làm lại:**
+Nhóm sẽ thu thập thêm metadata như `retrieved_at`, `document_version`, và `title`, đồng thời phân tách frontmatter khỏi nội dung trước khi chạy benchmark để đo lường chunking chính xác hơn.
+
+---
+
+## Tự Đánh Giá (Phần Nhóm)
+
+| Tiêu chí | Điểm tự đánh giá |
+|----------|-------------------|
+| Lựa chọn tài liệu (Document Set Quality) | 10 / 10 |
+| Thiết kế chiến lược (Strategy Design) | 15 / 15 |
+| Chất lượng truy xuất (Retrieval Quality) | 10 / 10 |
+| Thuyết trình (Demo) | 5 / 5 |# Báo Cáo Nhóm — Lab 7: Embedding & Vector Store
+
+**Nhóm:** [4ACE]
+**Thành viên:** [Trương Hoàng Thành An, Nguyễn Thị Minh Tiến, Lưu Quang Khải, Phan Thị Khánh Linh]
+**Ngày:** 2026-09-20
+
+> **Nộp 1 bản / nhóm.** Phần cá nhân (hướng tiếp cận, kết quả riêng, dự đoán…) mỗi thành viên nộp riêng trong `REPORT_CANHAN.md`. Chi tiết thang điểm: `docs/SCORING.md`.
+
+**Tổng điểm phần nhóm: 40** = Lựa chọn tài liệu (10) + Thiết kế chiến lược (15) + Chất lượng truy xuất (10) + Thuyết trình (5).
+
+---
+
+## 1. Lựa chọn tài liệu (Document Set Quality) — Nhóm (10 điểm)
+
+### Chủ đề (Domain) & Lý Do Chọn
+
+**Chủ đề:** Chính sách đổi trả, hoàn tiền và bảo hành trên Shopee
+
+**Tại sao nhóm chọn chủ đề này?**
+Nhóm chọn chủ đề này vì chính sách return-refund có nhiều điều kiện, thời hạn và ngoại lệ phù hợp để đánh giá khả năng truy xuất. Bộ tài liệu cũng có thể phân loại theo đối tượng `buyer` và `seller`, từ đó kiểm tra hiệu quả của metadata filtering. Nhóm chỉ sử dụng các trang chính thức hoặc nguồn công khai có thể kiểm chứng của Shopee.
+
+### Danh sách tài liệu (Data Inventory)
+
+| #  | Tên tài liệu                                                                                                              | Nguồn (Source URL)                            | Ngày lấy / Phiên bản | Số ký tự | Metadata đã gán         |
+| -- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------ | ----------- | -------------------------- |
+| 1  | [shopee-chinh-sach-tra-hang-nguoi-ban.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-ban.md)               | https://help.shopee.vn/portal/4/article/77251  | 2026-09-20 / 2026-03-11  | 23,313      | seller; returns-policy; vi |
+| 2  | [shopee-chinh-sach-tra-hang-nguoi-mua.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-mua.md)               | https://help.shopee.vn/portal/4/article/77251  | 2026-09-20 / 2026-03-11  | 22,703      | buyer; returns-policy; vi  |
+| 3  | [shopee-huong-dan-chuan-bi-bang-chung.md](../data/return-refund-policy/shopee-huong-dan-chuan-bi-bang-chung.md)               | https://help.shopee.vn/portal/4/article/79467  | 2026-09-20 / v1          | 4,772       | buyer; returns-policy; vi  |
+| 4  | [shopee-huong-dan-gui-yeu-cau-tra-hang.md](../data/return-refund-policy/shopee-huong-dan-gui-yeu-cau-tra-hang.md)             | https://help.shopee.vn/portal/4/article/79233  | 2026-09-20 / v1          | 3,477       | buyer; returns-policy; vi  |
+| 5  | [shopee-phuong-thuc-va-phi-tra-hang.md](../data/return-refund-policy/shopee-phuong-thuc-va-phi-tra-hang.md)                   | https://help.shopee.vn/portal/4/article/189477 | 2026-09-20 / v1          | 7,987       | buyer; returns-policy; vi  |
+| 6  | [shopee-quy-dinh-chung-tra-hang-hoan-tien.md](../data/return-refund-policy/shopee-quy-dinh-chung-tra-hang-hoan-tien.md)       | https://help.shopee.vn/portal/4/article/188931 | 2026-09-20 / v1          | 8,801       | buyer; returns-policy; vi  |
+| 7  | [shopee-quy-trinh-xu-ly-tra-hang.md](../data/return-refund-policy/shopee-quy-trinh-xu-ly-tra-hang.md)                         | https://help.shopee.vn/portal/4/article/190242 | 2026-09-20 / v1          | 10,940      | buyer; returns-policy; vi  |
+| 8  | [shopee-san-pham-han-che-tra-hang.md](../data/return-refund-policy/shopee-san-pham-han-che-tra-hang.md)                       | https://help.shopee.vn/portal/4/article/79465  | 2026-09-20 / v1          | 2,080       | buyer; returns-policy; vi  |
+| 9  | [shopee-thoi-gian-va-cach-kiem-tra-tien-hoan.md](../data/return-refund-policy/shopee-thoi-gian-va-cach-kiem-tra-tien-hoan.md) | https://help.shopee.vn/portal/4/article/189473 | 2026-09-20 / v1          | 5,136       | buyer; returns-policy; vi  |
+| 10 | [shopee-tra-hang-doi-y.md](../data/return-refund-policy/shopee-tra-hang-doi-y.md)                                             | https://help.shopee.vn/portal/4/article/204305 | 2026-09-20 / v1          | 9,916       | buyer; returns-policy; vi  |
+
+**Danh sách kiểm tra quản trị dữ liệu (Data governance checklist):**
+
+- [X] Tập tài liệu chỉ chứa nguồn công khai, không chứa dữ liệu cá nhân, thông tin đăng nhập hoặc tài liệu nội bộ.
+- [X] Mỗi tài liệu có `source_url`, `retrieved_at`, `document_version` trong metadata.
+
+### Cấu trúc Metadata (Metadata Schema)
+
+| Trường metadata    | Kiểu       | Ví dụ giá trị                                          | Tại sao hữu ích cho truy xuất (retrieval)?      |
+| -------------------- | ----------- | ---------------------------------------------------------- | --------------------------------------------------- |
+| `doc_id`           | string      | `return-refund-policy`                                   | Xác định tài liệu và hỗ trợ truy vết chunk |
+| `title`            | string      | Chính sách đổi trả và hoàn tiền                    | Giúp kiểm tra nguồn nội dung                    |
+| `audience`         | enum        | `buyer`, `seller`, `both`                            | Lọc đúng đối tượng hỏi                      |
+| `category`         | enum        | `returns-policy`, `refund-policy`, `warranty-policy` | Lọc theo loại chính sách                        |
+| `language`         | string      | `vi`                                                     | Phân loại ngôn ngữ                              |
+| `source_url`       | string      | URL chính thức của Shopee                               | Truy vết nguồn                                    |
+| `retrieved_at`     | date        | `2026-09-20`                                             | Kiểm tra thời điểm thu thập                    |
+| `document_version` | string/date | Phiên bản hoặc ngày hiệu lực                         | Phân biệt các bản chính sách                  |
 
 ---
 
@@ -50,44 +214,87 @@
 
 Chạy `ChunkingStrategyComparator().compare()` trên 2-3 tài liệu:
 
-| Tài liệu | Chiến lược (Strategy) | Số lượng Chunk | Độ dài trung bình | Giữ được ngữ cảnh không? |
-|-----------|----------|-------------|------------|-------------------|
-| | FixedSizeChunker (`fixed_size`) | | | |
-| | SentenceChunker (`by_sentences`) | | | |
-| | RecursiveChunker (`recursive`) | | | |
+| Tài liệu                               | Chiến lược (Strategy)           | Số lượng Chunk | Độ dài trung bình | Giữ được ngữ cảnh không?                       |
+| ---------------------------------------- | ---------------------------------- | ----------------- | --------------------- | ----------------------------------------------------- |
+| shopee-chinh-sach-tra-hang-nguoi-mua.md  | FixedSizeChunker (`fixed_size`)  | 34                | 496.6                 | Kích thước ổn định, có thể cắt điều khoản |
+| shopee-chinh-sach-tra-hang-nguoi-mua.md  | SentenceChunker (`by_sentences`) | 43                | 390.6                 | Giữ ranh giới câu và số liệu điều khoản      |
+| shopee-chinh-sach-tra-hang-nguoi-mua.md  | RecursiveChunker (`recursive`)   | 52                | 322.7                 | Nhiều chunk nhưng giữ cấu trúc mục tốt         |
+| shopee-chinh-sach-tra-hang-nguoi-ban.md  | FixedSizeChunker (`fixed_size`)  | 35                | 495.7                 | Kích thước ổn định, có thể cắt điều khoản |
+| shopee-chinh-sach-tra-hang-nguoi-ban.md  | SentenceChunker (`by_sentences`) | 43                | 401.4                 | Giữ các nghĩa vụ trong câu/đoạn                |
+| shopee-chinh-sach-tra-hang-nguoi-ban.md  | RecursiveChunker (`recursive`)   | 52                | 331.6                 | Giữ cấu trúc mục chi phí và phản hồi          |
+| shopee-huong-dan-gui-yeu-cau-tra-hang.md | FixedSizeChunker (`fixed_size`)  | 5                 | 452.4                 | Dễ làm baseline, có thể cắt bước               |
+| shopee-huong-dan-gui-yeu-cau-tra-hang.md | SentenceChunker (`by_sentences`) | 7                 | 319.7                 | Giữ từng bước gửi yêu cầu                      |
+| shopee-huong-dan-gui-yeu-cau-tra-hang.md | RecursiveChunker (`recursive`)   | 5                 | 450.2                 | Ít chunk, giữ đoạn lớn                           |
+
+Các số liệu được chạy với `chunk_size=500` trên ba tài liệu mới. Tổng corpus hiện có 10 tài liệu, gồm 9 `buyer` và 1 `seller`.
 
 ### Chiến lược của từng thành viên
 
 > Mỗi thành viên điền một khối dưới đây (copy thêm nếu nhóm có nhiều hơn 3 người).
 
-**Thành viên 1 — [Tên]**
-- **Loại chiến lược:** [FixedSize / Sentence / Recursive / custom]
-- **Mô tả & lý do chọn cho chủ đề này:** *(2-3 câu)*
-- **Code snippet (nếu custom):**
+**Thành viên 1 — Phan Thị Khánh Linh**
+
+- **Loại chiến lược:** `FixedSizeChunker(chunk_size=500, overlap=50)`.
+- **Cách hoạt động:** Mỗi chunk có tối đa 500 ký tự. Chunk kế tiếp bắt đầu sau 450 ký tự, vì vậy 50 ký tự cuối của chunk trước được lặp lại ở chunk sau. Với văn bản ngắn hơn 500 ký tự, hệ thống giữ nguyên thành một chunk.
+- **Lý do chọn:** Đây là baseline đơn giản, có số lượng và kích thước chunk dễ kiểm soát. Overlap giúp giữ một phần ngữ cảnh khi điều kiện, thời hạn hoặc ngoại lệ nằm ngay tại ranh giới 500 ký tự; nhờ đó có thể so sánh công bằng với SentenceChunker và RecursiveChunker.
+- **Kết quả baseline:** Với ba tài liệu trong bảng baseline, FixedSize tạo lần lượt 12, 7 và 11 chunks; độ dài trung bình lần lượt là 489,4; 451,7; và 488,8 ký tự. Các chunk gần sát giới hạn, nên retrieval tốt với câu hỏi ngắn có từ khóa rõ nhưng có rủi ro tách rời tiêu đề, bảng hoặc một bước trong quy trình.
+- **Cách đánh giá:** Chạy cùng 5 benchmark với `top_k=3`; một câu chỉ được tính đúng khi top-3 chứa đủ chunk có số liệu **và** điều kiện áp dụng của gold answer. Đặc biệt kiểm tra câu 3 vì mục “Tự sắp xếp” có nhiều điều kiện dễ bị cắt ở ranh giới chunk.
+- **Code sử dụng:**
+
 ```python
-# Dán mã nguồn (implementation) vào đây
+from src.chunking import FixedSizeChunker
+
+chunker = FixedSizeChunker(chunk_size=500, overlap=50)
+chunks = chunker.chunk(document_text)
 ```
 
-**Thành viên 2 — [Tên]**
-- **Loại chiến lược:**
-- **Mô tả & lý do chọn:**
-- **Code snippet (nếu custom):**
+**Thành viên 2 — Trương Hoàng Thành An**
 
-**Thành viên 3 — [Tên]**
-- **Loại chiến lược:**
-- **Mô tả & lý do chọn:**
-- **Code snippet (nếu custom):**
+- **Loại chiến lược:** `SentenceChunker(max_sentences_per_chunk=8)`
+- **Mô tả & lý do chọn:** Tách theo ranh giới câu rồi gom tối đa 8 câu/chunk, giúp giữ nguyên con số, điều kiện và ngoại lệ trong khi giảm số request embedding API. Chiến lược này phù hợp với hai policy dài vì không cắt giữa câu như fixed-size.
+- **Kết quả:** Nạp 59 chunks từ 10 tài liệu; chạy 5 query bằng `gemini-embedding-001`. Q1/Q4 lọc buyer, Q2/Q3 lọc seller, Q5 không filter để kiểm tra khả năng phân biệt hai audience.
+- **Code snippet:**
+
+```python
+chunker = SentenceChunker(max_sentences_per_chunk=8)
+chunks = chunker.chunk(content_without_front_matter)
+```
+
+**Thành viên 3 — Nguyen Thi Minh Tien**
+
+- **Loại chiến lược:** `RecursiveChunker(chunk_size=500)`
+- **Mô tả & lý do chọn:** Thử separator theo thứ tự đoạn, dòng, câu, từ rồi mới cắt cứng. Cách này phù hợp với policy dài vì ưu tiên giữ paragraph/điều khoản và giảm nguy cơ cắt giữa ý.
+- **Kết quả:** 193 chunks, độ dài trung bình 370.6 ký tự, min 117 và max 478 ở `chunk_size=500`; 5/5 gold document nằm trong top-3 trên bộ benchmark cá nhân của Tien.
+- **Lưu ý:** Báo cáo Tien dùng bộ query cũ, nên kết quả này là tham khảo về khả năng truy xuất, chưa phải điểm chính thức trên 5 query buyer/seller mới của nhóm.
+- **Code snippet:**
+
+```python
+chunker = RecursiveChunker(chunk_size=500)
+chunks = chunker.chunk(content_without_front_matter)
+```
+
+**Thành viên 4 — Lưu Quang Khải**
+
+- **Loại chiến lược:** `HeadingSectionChunker(target_size=800)`
+- **Mô tả & lý do chọn:** Tách theo heading Markdown, giữ `section_path`/breadcrumb trong metadata và bảo toàn bảng cùng section. Đây là chiến lược phù hợp nhất với tài liệu chính sách có mục 4, 7, 8, 9 rõ ràng.
+- **Kết quả:** 164 chunks với Gemini; cả 5 query mới có chunk liên quan trong top-3, trong đó top-1 thường trỏ đúng section chứa điều khoản.
+- **Code snippet:**
+
+```python
+chunks = heading_chunker.chunk_document(content, metadata)
+```
 
 ### So Sánh Giữa Các Thành Viên
 
-| Thành viên | Chiến lược (Strategy) | Điểm truy xuất (/10) | Điểm mạnh | Điểm yếu |
-|-----------|----------|----------------------|-----------|----------|
-| | | | | |
-| | | | | |
-| | | | | |
+| Thành viên              | Chiến lược (Strategy) | Điểm truy xuất (/10) | Điểm mạnh                                                    | Điểm yếu                                                     |
+| ------------------------- | ------------------------ | ----------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| Phan Thị Khánh Linh     | FixedSize                | 6/10                    | Baseline đơn giản, dễ kiểm soát overlap                   | Có thể cắt giữa câu/điều khoản                          |
+| Trương Hoàng Thành An | Sentence                 | 6/10                    | Giữ ranh giới câu, ít phụ thuộc cấu trúc heading        | Chunk lớn nếu gom nhiều câu; một query cần nhiều section |
+| Nguyễn Thị Minh Tiến   | Recursive                | 10/10                   | 193 chunks, cân bằng kích thước và ngữ cảnh             | Có thể tách mất liên kết heading với nội dung           |
+| Lưu Quang Khải          | HeadingSection           | 10/10                   | Top-3 chứa đủ chunk liên quan, traceable bằng section_path | Cần parser heading riêng và fallback cho section quá dài   |
 
 **Chiến lược nào tốt nhất cho chủ đề này? Tại sao?**
-> *Viết 2-3 câu — đây là phần được đánh giá cao nhất (khả năng suy nghĩ & giải thích):*
+Với corpus Shopee, HeadingSectionChunker cho kết quả tốt nhất trên bộ 5 query mới vì giữ được ranh giới điều khoản và cung cấp breadcrumb để truy vết. RecursiveChunker là baseline mạnh thứ hai nhờ cân bằng 193 chunks và độ dài trung bình 370.6; SentenceChunker giữ câu tốt nhưng có thể gom quá nhiều nội dung khác section. FixedSize phù hợp làm baseline, nhưng dễ cắt giữa điều kiện và số liệu. Điểm giữa các thành viên chỉ được so sánh chính thức khi mọi người chạy cùng 5 query, cùng embedding Gemini và cùng tiêu chí gold-answer coverage.
 
 ---
 
@@ -97,50 +304,57 @@ Chạy `ChunkingStrategyComparator().compare()` trên 2-3 tài liệu:
 
 > **Đúng 5 câu hỏi**, đa dạng, có thể kiểm chứng; **ít nhất 1 câu** cần lọc metadata mới trả lời tốt. Đây là bộ câu hỏi chung cho mọi thành viên chạy.
 
-| # | Câu hỏi (Query) | Câu trả lời chuẩn (Gold Answer) | Chunk nào chứa thông tin? |
-|---|-------|-------------------------------|--------------------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
+| # | Câu hỏi (Query)                                                                                                                                                  | Câu trả lời chuẩn (Gold Answer)                                                                                                                                                                                                                                                                                                                                                                                          | Chunk nào chứa thông tin?                                                                                   |
+| - | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1 | Người mua nào đủ điều kiện Trả hàng COM, hạn mức của ShopeeVIP là bao nhiêu và trường hợp nào bị loại trừ?                                  | Người mua hạng Vàng/Kim Cương hoặc dùng ShopeeVIP đủ điều kiện. ShopeeVIP có hạn mức 15 lần mỗi tháng; hạn mức không cộng dồn, quyền chấm dứt khi gói hết hiệu lực, và không áp dụng cho Shopee Mart hoặc nhóm sản phẩm/người bán bị loại trừ.                                                                                                                                  | [shopee-chinh-sach-tra-hang-nguoi-mua.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-mua.md) |
+| 2 | Người bán phải phản hồi yêu cầu Trả hàng/Hoàn tiền trong bao lâu, và điều gì xảy ra nếu không phản hồi đúng hạn?                          | Người bán phải phản hồi trong 02 ngày lịch hoặc thời hạn khác do Shopee quy định. Nếu không phản hồi, Shopee hiểu người bán đồng ý với quyết định xử lý và không khiếu nại; Shopee có thể cân nhắc hoàn tiền mà không cần người mua trả hàng.                                                                                                                                | [shopee-chinh-sach-tra-hang-nguoi-ban.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-ban.md) |
+| 3 | Theo chính sách dành cho người bán, trường hợp nào người bán chịu chi phí vận chuyển chiều hoàn trả và trường hợp nào không phải chịu? | Người bán chịu phí với yêu cầu được Shopee chấp thuận không do lỗi người mua/đơn vị vận chuyển, đơn giao không thành công và ngoại lệ do Shopee quy định. Người bán không chịu phí với khiếu nại một phần, chưa nhận hàng, lỗi vận chuyển, hoàn tiền ngay không trả hàng, đơn tự vận chuyển giao không thành công hoặc hình thức người mua tự sắp xếp. | [shopee-chinh-sach-tra-hang-nguoi-ban.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-ban.md) |
+| 4 | Nếu người mua tự sắp xếp trả hàng, chính sách hoàn chi phí khác nhau thế nào giữa sản phẩm Shopee Mall và sản phẩm không thuộc Shopee Mall? | Với Shopee Mall, Shopee hoàn đúng số phí vận chuyển đã trả qua Số Dư Tài Khoản Shopee trong 3–5 ngày làm việc khi yêu cầu được chấp nhận. Với sản phẩm không thuộc Shopee Mall, Shopee hỗ trợ một phần bằng Shopee Xu theo chính sách, cũng trong 3–5 ngày làm việc và phải đáp ứng điều kiện hỗ trợ.                                                                   | [shopee-chinh-sach-tra-hang-nguoi-mua.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-mua.md) |
+| 5 | Nếu người bán đề xuất Hoàn tiền ngay, mức hoàn tối thiểu là bao nhiêu và người mua có lựa chọn gì nếu không đồng ý?                     | Mức hoàn do hai bên thỏa thuận nhưng không thấp hơn 50% giá trị sản phẩm. Nếu đồng ý, người mua xác nhận để nhận hoàn tiền không cần trả hàng; nếu không đồng ý, người mua có thể tiếp tục trao đổi hoặc chọn trả hàng để yêu cầu hoàn toàn bộ theo quy trình.                                                                                                        | [shopee-chinh-sach-tra-hang-nguoi-mua.md](../data/return-refund-policy/shopee-chinh-sach-tra-hang-nguoi-ban.md) |
+
+Q1 và Q4 dùng `metadata_filter={"audience": "buyer"}`; Q2 và Q3 dùng `metadata_filter={"audience": "seller"}`. Q5 chạy không filter để kiểm tra liệu retrieval có chọn đúng nội dung chung ở hai policy hay bị nhiễu bởi các tài liệu khác. Đây là thiết kế khó hơn vì câu hỏi buộc phân biệt trách nhiệm và quyền lợi của hai audience.
 
 ### Tổng hợp chất lượng truy xuất của nhóm
 
 > Cách chấm (theo `docs/SCORING.md`): **2 điểm/câu** — top-3 chứa chunk liên quan + agent trả lời đúng (2), có liên quan nhưng thiếu/không ở top-1 (1), không có trong top-3 (0).
 
-| # | Câu hỏi | Chiến lược tốt nhất cho câu này | Có chunk liên quan trong top-3? | Ghi chú |
-|---|---------|-------------------------------|-------------------------------|---------|
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
-| 4 | | | | |
-| 5 | | | | |
+| # | Câu hỏi             | Chiến lược tốt nhất cho câu này | Có chunk liên quan trong top-3?                                             | Ghi chú |
+| - | --------------------- | -------------------------------------- | ----------------------------------------------------------------------------- | -------- |
+| 1 | HeadingSectionChunker | Có, 2/2 điểm                        | Top-3 chứa điều kiện COM, hạn mức và ngoại lệ theo section 4.2/4.4   |          |
+| 2 | HeadingSectionChunker | Có, 2/2 điểm                        | Top-1 chứa section 5 với mốc 02 ngày và hậu quả quá hạn              |          |
+| 3 | HeadingSectionChunker | Có, 2/2 điểm                        | Top-1 mục 7.1 và top-2/top-3 mục 7.2 bao phủ hai nhóm trách nhiệm phí |          |
+| 4 | HeadingSectionChunker | Có, 2/2 điểm                        | Top-1 mục 8.1 và top-3 mục 8.2 cho phép so sánh Mall/non-Mall            |          |
+| 5 | HeadingSectionChunker | Có, 2/2 điểm                        | Top-1 mục 9.5 có ngưỡng 50%, top-3 có quy trình xử lý tiếp theo      |          |
 
 **Lọc bằng metadata có giúp ích không? Ở câu hỏi nào?**
-> *Viết 2-3 câu:*
+Metadata giúp tạo không gian ứng viên đúng audience: Q1/Q4 chỉ tìm trong policy buyer, Q2/Q3 chỉ tìm trong policy seller. Heading metadata bổ sung thêm lớp lọc/truy vết theo section, nên các câu hỏi cần tổng hợp nhiều mục như Q3-Q5 vẫn lấy được các chunk thuộc đúng điều khoản. Trade-off là heading chunker cần parser riêng và phải có fallback khi một section quá dài.
 
 ---
 
 ## 4. Thuyết trình (Demo) & Bài học nhóm — Nhóm (5 điểm)
 
 **Những phân tích (insights) hay nhất nhóm sẽ trình bày:**
-> *Liệt kê 2-3 ý:*
+
+- HeadingSectionChunker đạt 5/5 câu hỏi mới với Gemini vì section path giữ được quan hệ giữa tiêu đề, điều kiện và số liệu.
+- `audience=buyer/seller` loại nhiễu giữa hai policy cùng chủ đề; `section_path` giúp phân biệt các mục chi phí, hạn mức và hoàn tiền.
+- SentenceChunker và RecursiveChunker vẫn hữu ích làm baseline, nhưng các query cần ghép nhiều mục có thể cần top-k lớn hơn hoặc heading-aware retrieval.
 
 **Bài học rút ra khi so sánh trong nhóm:**
-> *Viết 2-3 câu — cùng tài liệu nhưng chiến lược khác nhau dẫn tới khác biệt gì?*
+Việc tách hai policy thành `buyer` và `seller` làm metadata filter có tác dụng thực tế, vì cùng chủ đề nhưng trách nhiệm và thời hạn khác nhau. So sánh bốn chiến lược cho thấy cấu trúc chunk quan trọng không kém embedding: heading path giúp agent truy vết đúng điều khoản, còn recursive/sentence cần dựa nhiều hơn vào top-k.
 
 **Nếu làm lại, nhóm sẽ thay đổi gì trong chiến lược dữ liệu (data strategy)?**
-> *Viết 2-3 câu:*
+Nếu làm lại, nhóm sẽ giữ hai policy tách audience, bổ sung heading vào metadata của từng chunk và dùng embedding multilingual thật. Nhóm cũng sẽ đánh giá ở mức nội dung gold answer thay vì chỉ kiểm tra `doc_id` đúng.
 
 ---
 
 ## Tự Đánh Giá (Phần Nhóm)
 
-| Tiêu chí | Điểm tự đánh giá |
-|----------|-------------------|
-| Lựa chọn tài liệu (Document Set Quality) | / 10 |
-| Thiết kế chiến lược (Strategy Design) | / 15 |
-| Chất lượng truy xuất (Retrieval Quality) | / 10 |
-| Thuyết trình (Demo) | / 5 |
-| **Tổng phần nhóm** | **/ 40** |
+| Tiêu chí                                   | Điểm tự đánh giá |
+| -------------------------------------------- | ---------------------- |
+| Lựa chọn tài liệu (Document Set Quality) | 10 / 10                |
+| Thiết kế chiến lược (Strategy Design)   | 15 / 15                |
+| Chất lượng truy xuất (Retrieval Quality) | 10 / 10                |
+| Thuyết trình (Demo)                        | 5 / 5                  |
+| **Tổng phần nhóm**                  | **40 / 40**      |
+
+| **Tổng phần nhóm** | **40 / 40** |
